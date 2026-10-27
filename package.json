@@ -1,0 +1,15 @@
+{
+  "name": "toolguard",
+  "version": "0.1.0",
+  "description": "Drop-in resilience and retry proxy for AI agent tool calls",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "node test/test_proxy.js"
+  },
+  "dependencies": {},
+  "keywords": ["ai", "agents", "proxy", "resilience", "retry", "json-repair"],
+  "author": "FJ Waldeck",
+  "license": "MIT"
+}
