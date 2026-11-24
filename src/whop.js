@@ -2,6 +2,7 @@ const https = require('https');
 
 const cache = new Map();
 const CACHE_TTL_MS = 5 * 60 * 1000;
+const TEST_KEY_PREFIX = 'tg_test_';
 
 function getCached(key) {
   const item = cache.get(key);
@@ -20,17 +21,27 @@ function setCached(key, data) {
   });
 }
 
+function isDevModeEnabled() {
+  return process.env.DEV_MODE === 'true';
+}
+
+function isExplicitTestKey(licenseKey) {
+  return isDevModeEnabled() && licenseKey.startsWith(TEST_KEY_PREFIX);
+}
+
 async function validateLicense(licenseKey) {
-  if (!licenseKey) {
+  if (typeof licenseKey !== 'string' || licenseKey.trim() === '') {
     return { valid: false, error: 'Missing x-toolguard-key or Authorization header' };
   }
 
-  const cached = getCached(licenseKey);
+  const key = licenseKey.trim();
+  const cached = getCached(key);
   if (cached) {
     return cached;
   }
 
-  if (licenseKey.startsWith('tg_test_') || process.env.DEV_MODE === 'true' || !process.env.WHOP_API_KEY) {
+  // Development bypass is limited to explicit tg_test_ keys while DEV_MODE is exactly "true".
+  if (isExplicitTestKey(key)) {
     const result = {
       valid: true,
       tier: 'pro',
@@ -38,16 +49,23 @@ async function validateLicense(licenseKey) {
       plan: 'development_unlimited',
       testMode: true
     };
-    setCached(licenseKey, result);
+    setCached(key, result);
     return result;
   }
 
-  const whopApiKey = process.env.WHOP_API_KEY;
+  const whopApiKey = (process.env.WHOP_API_KEY || '').trim();
+  if (!whopApiKey) {
+    // Fail closed: without a Whop API key no license can be verified.
+    return {
+      valid: false,
+      error: 'Server misconfigured: WHOP_API_KEY is not set, so licenses cannot be verified (failing closed)'
+    };
+  }
 
   return new Promise((resolve) => {
     const options = {
       hostname: 'api.whop.com',
-      path: `/api/v5/licenses/${encodeURIComponent(licenseKey)}`,
+      path: `/api/v5/licenses/${encodeURIComponent(key)}`,
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${whopApiKey}`,
@@ -70,7 +88,7 @@ async function validateLicense(licenseKey) {
               tier: body.plan?.name || 'pro',
               whopUser: body.user?.id || null
             };
-            if (isValid) setCached(licenseKey, result);
+            if (isValid) setCached(key, result);
             resolve(result);
           } else {
             resolve({ valid: false, error: `Whop license invalid or expired (status ${res.statusCode})` });
